@@ -21,3 +21,6 @@
 go.work
 go.work.sum
 
+.next
+node_modules
+out
