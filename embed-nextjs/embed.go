@@ -2,78 +2,52 @@ package main
 
 import (
     "embed"
-    "fmt"
     "io/fs"
     "io/ioutil"
     "os"
-    "os/exec"
     "path/filepath"
+    "os/exec"
 )
 
-var content embed.FS
+//go:embed ui/*
+var uiFiles embed.FS
 
 func embedFiles() {
     // Create a temporary directory
-    tempDir, err := ioutil.TempDir("", "nextjs-app")
+    tmpDir, err := ioutil.TempDir("", "nextjs")
     if err != nil {
-        fmt.Println("Error creating temp directory:", err)
-        return
+        panic(err)
     }
-    defer os.RemoveAll(tempDir) // Clean up
+    defer os.RemoveAll(tmpDir) // Clean up
 
-    fmt.Println("Temporary directory created at:", tempDir)
-
-    // Extract embedded files to the temporary directory
-    if err := extractFiles(tempDir); err != nil {
-        fmt.Println("Error extracting files:", err)
-        return
-    }
-
-    // Change to the temporary directory
-    if err := os.Chdir(tempDir); err != nil {
-        fmt.Println("Error changing directory:", err)
-        return
-    }
-
-    // Run 'npm install'
-    if err := runCommand("npm", "install"); err != nil {
-        fmt.Println("Error running npm install:", err)
-        return
-    }
-
-    // Run 'npx next start'
-    if err := runCommand("npx", "next", "start"); err != nil {
-        fmt.Println("Error running npx next start:", err)
-        return
-    }
-}
-
-func extractFiles(targetDir string) error {
-    return fs.WalkDir(content, ".", func(path string, d fs.DirEntry, err error) error {
+    // Write the embedded files to the temporary directory
+    fs.WalkDir(uiFiles, "ui", func(path string, d fs.DirEntry, err error) error {
         if err != nil {
             return err
         }
+
         if d.IsDir() {
             return nil
         }
 
-        data, err := content.ReadFile(path)
+        data, err := uiFiles.ReadFile(path)
         if err != nil {
             return err
         }
 
-        // Remove 'ui/' prefix from the path
-        relativePath := path[len("ui/"):]
+        destPath := filepath.Join(tmpDir, path)
+        os.MkdirAll(filepath.Dir(destPath), 0755)
 
-        targetPath := filepath.Join(targetDir, relativePath)
-        os.MkdirAll(filepath.Dir(targetPath), 0755)
-        return ioutil.WriteFile(targetPath, data, 0644)
+        return ioutil.WriteFile(destPath, data, 0644)
     })
-}
 
-func runCommand(name string, arg ...string) error {
-    cmd := exec.Command(name, arg...)
+    // Run `npx next start` in the temporary directory
+    cmd := exec.Command("npm", "run", "start")
+    cmd.Dir = filepath.Join(tmpDir, "ui")
     cmd.Stdout = os.Stdout
     cmd.Stderr = os.Stderr
-    return cmd.Run()
+
+    if err := cmd.Run(); err != nil {
+        panic(err)
+    }
 }
